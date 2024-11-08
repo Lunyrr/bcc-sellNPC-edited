@@ -4,7 +4,7 @@ Config.devMode = false
 
 Config.WebHook = true
 Config.WebhookTitle = 'Bcc-SellNpc'
-Config.WebhookLink = 'https://discord.com/api/webhooks/1240079995746123796/3-T-FEj8tTlWXsdHMNboNVtsOjBbQCtIR30wY7A5Lp6iK-qpHGw8iPTIdlCM4aMxqA06'  -- Discord WH link Here
+Config.WebhookLink = ''  -- Discord WH link Here
 Config.WebhookAvatar = '' -- must be 30x30px
 
 Config.defaultlang = 'ro_lang'
