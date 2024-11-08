@@ -186,4 +186,4 @@ AddEventHandler('bcc-sellNpc:reportAlert', function()
     AlertJob("illegalReport", _U('sellToNpcReport'), {x = pos.x, y = pos.y, z = pos.z})
 end)
 
-BccUtils.Versioner.checkFile(GetCurrentResourceName(), 'https://github.com/BryceCanyonCounty/bcc-mailbox')
+BccUtils.Versioner.checkFile(GetCurrentResourceName(), 'https://github.com/BryceCanyonCounty/bcc-sellNPC')
