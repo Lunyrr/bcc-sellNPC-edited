@@ -23,4 +23,4 @@ server_scripts {
 	'@oxmysql/lib/MySQL.lua'
 }
 
-version '1.0.1'
+version '1.0.2'
