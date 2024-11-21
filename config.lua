@@ -8,6 +8,32 @@ Config.WebhookLink = ''  -- Discord WH link Here
 Config.WebhookAvatar = '' -- must be 30x30px
 
 Config.defaultlang = 'ro_lang'
+Config.Jobs = {
+
+    lawEnforcement = {
+        "police",
+        "SherifStr",
+        "SherifBlw",
+    },
+    medical = {
+        "doctor",
+        
+    },
+    administration = {
+        "mayor",
+        "writer"
+    }
+}
+
+-- Use references to centralized job definitions
+Config.NoRobberyJobsEnable = true
+Config.NoRobberyJobs = Config.Jobs.lawEnforcement -- Doctors are restricted from robbery
+
+Config.RequiredJobEnble = true
+Config.RequiredJobs = {
+    Amount = 1,
+    Jobs = Config.Jobs.lawEnforcement -- Law enforcement jobs required for an action
+}
 
 -- List of items to check with respective prices
 Config.itemsForSell = {

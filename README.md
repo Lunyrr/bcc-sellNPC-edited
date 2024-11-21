@@ -17,7 +17,7 @@ This script allows players to interact with NPCs in RedM to sell items.
 
 ## Usage
 - **Approach an NPC**: The script will detect nearby NPCs that meet allowed ped type.
-- **Press ENTER**: When within range, press "G" key and after right click to initiate the selling interaction.
+- **Press ENTER**: When within range, press "B" key and after press "ENTER" to initiate the selling interaction.
 - **Complete Transaction**: If the NPC accepts the offer, items will be removed from the player's inventory, and currency will be added.
 
 ## Configuration

@@ -1,22 +1,27 @@
 local Core = exports.vorp_core:GetCore()
-BccUtils = exports['bcc-utils'].initiate()
+local BccUtils = exports['bcc-utils'].initiate()
 
+-- State Variables
 local selling = false
 local saleCompleted = false
+local saleProcessing = false
 local itemForSale = nil
-local globalBlip ={}  -- Initialize as nil for proper checking
 local hasItems = true
-local pos1 = nil  -- Initialize as nil until a position is assigned
+local targetPed = nil
+local currentPlayer = nil
+local globalBlip = nil
+local interactedNPCs = {} -- Store NPCs that have already been interacted with
+local currentlySelling = false -- Guard for currentlySelling event
 
--- Debug printing function
-function devPrint(message)
+-- Debug Printing Function
+local function devPrint(message)
     if Config.devMode then
-        print("Server Debug: " .. message)
+        print("^1[DEBUG]^0: " .. tostring(message))
     end
 end
 
--- Helper Function to Check Allowed Ped Type
-function isPedTypeAllowed(pedType)
+-- Helper Function: Check Allowed Ped Type
+local function isPedTypeAllowed(pedType)
     for _, allowedType in ipairs(Config.AllowedPedTypes) do
         if pedType == allowedType then
             return true
@@ -25,56 +30,81 @@ function isPedTypeAllowed(pedType)
     return false
 end
 
---[[function GetPedType(ped)
-    return Citizen.InvokeNative(0xFF059E1E4C01E63C, ped, Citizen.ResultAsInteger())
-end]]--
-
-function IsEntityFrozen(entity)
-    return Citizen.InvokeNative(0x083D497D57B7400F, entity)
+-- Helper Function: Check if NPC has already been interacted with
+local function hasInteractedWithNPC(ped)
+    if NetworkGetEntityIsNetworked(ped) then
+        local pedId = NetworkGetNetworkIdFromEntity(ped)
+        return interactedNPCs[pedId] == true
+    else
+        return false
+    end
 end
 
-function IsEntityInsideBuiding()
-    return Citizen.InvokeNative(0x083D497D57B7400F)
+-- Helper Function: Mark NPC as interacted
+local function markNPCAsInteracted(ped)
+    if not NetworkGetEntityIsNetworked(ped) then
+        NetworkRegisterEntityAsNetworked(ped)
+    end
+    local pedId = NetworkGetNetworkIdFromEntity(ped)
+    interactedNPCs[pedId] = true
 end
 
-
--- Function to play the animation using Citizen.InvokeNative
-function playSellCompleteAnimation(entity)
+-- Helper Function: Play selling animation
+local function playSellAnimation(entity)
     Citizen.InvokeNative(0xB31A277C1AC7B7FF, entity, 0, 0, -1457020913, 1, 1, 0, 0)
 end
 
--- Set up interaction prompt group and register the 'H' key for interaction
+-- Interaction Prompt Setup
 local PromptGroup1 = BccUtils.Prompts:SetupPromptGroup()
-local InteractPrompt = PromptGroup1:RegisterPrompt(_U('Negotiate'), BccUtils.Keys["MOUSE1"], 1, 1, true, 'hold', { timedeventhash = "MEDIUM_TIMED_EVENT" })
+local InteractPrompt = PromptGroup1:RegisterPrompt(_U('Negotiate'), BccUtils.Keys["ENTER"], 1, 1, true, 'hold', { timedeventhash = "MEDIUM_TIMED_EVENT" })
 
--- Function to attempt selling items to NPC
-local function attemptSellToNPC(ped, player)
-    oldped = ped
+local function attemptSellToNPC(player, ped)
+    if selling then
+        devPrint("Already selling, ignoring duplicate attempt.")
+        return
+    end
+
     SetEntityAsMissionEntity(ped)
-    ClearPedTasks(ped)
+    ClearPedTasksImmediately(ped)
     FreezeEntityPosition(ped, true)
 
-    if hasItems then
-        TriggerServerEvent('bcc-sellNpc:reportAlert')
-        local random = math.random(1, 12)
-        
-        if random == 3 or random == 7 or random == 11 or random == 5 then
-            Core.NotifyObjective(_U('npcRejectOffer'), 4000)
-            selling = false
-            playSellCompleteAnimation(player)
+    if hasInteractedWithNPC(ped) then
+        Core.NotifyObjective(_U('alreadyInteractedWithNpc'), 4000)
+        SetPedAsNoLongerNeeded(ped)
+        return
+    end
 
+    selling = true -- Set selling state
+
+    if hasItems then
+        devPrint("Starting interaction with NPC for selling.")
+        TriggerServerEvent('bcc-sellNpc:itemsForSelling') -- Request item details
+        TriggerServerEvent('bcc-sellNpc:reportAlert')
+        -- Wait for the server response and then proceed
+        Citizen.SetTimeout(100, function()
+            if not itemForSale or not itemForSale.name then
+                devPrint("Error: itemForSale is nil or invalid. Aborting sale.")
+                selling = false -- Reset selling state
+                SetPedAsNoLongerNeeded(ped)
+                return
+            end
+
+            local rejectionChance = math.random(1, 12)
+            if rejectionChance % 3 == 0 then
+                Core.NotifyObjective(_U('npcRejectOffer'), 4000)
+            else
+                playSellAnimation(player)
+                playSellAnimation(ped)
+                Citizen.Wait(2000)
+                Core.NotifyObjective(_U('npcAcceptOffer'), 4000)
+                TriggerServerEvent('bcc-sellNpc:moneyFromSelling', itemForSale)
+                markNPCAsInteracted(ped)
+                devPrint("Sale completed for item: " .. itemForSale.name)
+            end
+
+            selling = false -- Reset selling state
             SetPedAsNoLongerNeeded(ped)
-        else
-            pos1 = GetEntityCoords(ped)
-            playSellCompleteAnimation(player)
-            playSellCompleteAnimation(ped)
-            Citizen.Wait(2000)
-            Core.NotifyObjective(_U('npcAcceptOffer'), 4000)
-            TriggerServerEvent('bcc-sellNpc:itemsForSelling')
-            Citizen.Wait(2000)
-            SetPedAsNoLongerNeeded(ped)
-            selling = true
-        end
+        end)
     else
         Core.NotifyLeft(_U('saleUnsuccessful'), _U('dontHaveItems'), "scoretimer_textures", "scoretimer_generic_cross", 3000, "red")
         selling = false
@@ -82,21 +112,30 @@ local function attemptSellToNPC(ped, player)
     end
 end
 
+-- Job Check Events
+RegisterNetEvent('bcc-sellNpc:jobCheckPassed')
+AddEventHandler('bcc-sellNpc:jobCheckPassed', function()
+    if currentPlayer and targetPed then
+        attemptSellToNPC(currentPlayer, targetPed)
+    else
+        Core.NotifyLeft(_U('saleUnsuccessful'), _U('dontHaveItems'), "scoretimer_textures", "scoretimer_generic_cross", 3000, "red")
+    end
+end)
 
+RegisterNetEvent('bcc-sellNpc:jobCheckFailed')
+AddEventHandler('bcc-sellNpc:jobCheckFailed', function(reason)
+    Core.NotifyObjective(reason, 4000)
+    selling = false
+    SetPedAsNoLongerNeeded(targetPed)
+end)
+
+-- Update Inventory
 RegisterNetEvent('bcc-sellNpc:updateHasItems')
 AddEventHandler('bcc-sellNpc:updateHasItems', function(hasInventoryItems)
     hasItems = hasInventoryItems
 end)
 
 Citizen.CreateThread(function()
-    while true do
-        Wait(5000)
-        TriggerServerEvent('bcc-sellNpc:checkInventory')
-    end
-end)
-
-Citizen.CreateThread(function()
-    local inRange = false
     while true do
         local sleep = 1000
         local player = PlayerPedId()
@@ -106,79 +145,95 @@ Citizen.CreateThread(function()
 
         repeat
             success, ped = FindNextPed(handle)
-            local pos = GetEntityCoords(ped)
-            local distance = #(playerLoc - pos)
-
-            if hasItems and not IsPedInAnyVehicle(ped) and not IsPedDeadOrDying(ped) and not IsPedAPlayer(ped)
-                and not IsEntityAttached(ped) and not IsEntityFrozen(ped) and not IsInteriorScene() then
-                local pedType = GetPedType(ped)
-                if isPedTypeAllowed(pedType) and ped ~= oldped then
-                    currentped = ped
-
-                    if distance < 4 then
-                        sleep = 0
-                        if IsControlPressed(0, BccUtils.Keys["G"]) then
-                            if not inRange then
-                                PromptGroup1:ShowGroup(_U('aproachNpc'))
-                                inRange = true
-                            end
+            if success and isPedTypeAllowed(GetPedType(ped)) and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped) and #(playerLoc - GetEntityCoords(ped)) < 2.0 then
+                if ped ~= targetPed and not selling then
+                    sleep = 0
+                        if IsControlPressed(0, BccUtils.Keys["B"]) then
+                            PromptGroup1:ShowGroup(_U('aproachNpc'))
                         end
 
-                        if inRange and InteractPrompt:HasCompleted() then
-                            attemptSellToNPC(ped, player)
-                        end
-                    else
-                        inRange = false
+                    if InteractPrompt:HasCompleted() and not hasInteractedWithNPC(ped) then
+                        currentPlayer = player
+                        targetPed = ped
+                        TriggerServerEvent('bcc-sellNPC:JobCheck')
+                    elseif hasInteractedWithNPC(ped) then
+                        Core.NotifyObjective(_U('alreadyInteractedWithNpc'), 4000)
                     end
                 end
             end
         until not success
+
         EndFindPed(handle)
-        Wait(sleep)
+        Citizen.Wait(sleep)
     end
 end)
 
 RegisterNetEvent('bcc-sellNpc:currentlySelling')
 AddEventHandler('bcc-sellNpc:currentlySelling', function(item)
-    hasItems = true
-    selling = true
+    if currentlySelling then
+        devPrint("Currently selling already in progress, ignoring.")
+        return
+    end
+
+    currentlySelling = true
+
+    if not item or not item.name then
+        devPrint("Error: Invalid item received in currentlySelling.")
+        currentlySelling = false
+        return
+    end
+
+    -- Properly assign itemForSale
     itemForSale = item
-    devPrint("Sale started for item:", itemForSale.name, "with price:", itemForSale.price)
+    devPrint("currentlySelling: itemForSale assigned with " .. item.name .. " at price " .. item.price)
+
+    Citizen.SetTimeout(5000, function()
+        currentlySelling = false
+    end)
 end)
+
 
 Citizen.CreateThread(function()
     while true do
-        Wait(0)
-        if selling and hasItems and pos1 then  -- Check pos1 is not nil
+        Citizen.Wait(0)
+        if selling and hasItems and targetPed and not saleProcessing then
             local playerLoc = GetEntityCoords(PlayerPedId())
-            local distance = GetDistanceBetweenCoords(pos1.x, pos1.y, pos1.z, playerLoc.x, playerLoc.y, playerLoc.z, true)
+            local pedLoc = GetEntityCoords(targetPed)
 
-            if distance > 6 then
-                Core.NotifyObjective(_U('tooFarAway'), 4000)
-                selling = false
-                SetEntityAsMissionEntity(oldped)
-                SetPedAsNoLongerNeeded(oldped)
+            if DoesEntityExist(targetPed) then
+                local distance = #(playerLoc - pedLoc)
+                if distance > 6.0 then
+                    Core.NotifyObjective(_U('tooFarAway'), 4000)
+                    selling = false
+                    saleProcessing = false
+                    SetPedAsNoLongerNeeded(targetPed)
+                    targetPed = nil
+                elseif not saleCompleted then
+                    saleProcessing = true
+                    saleCompleted = true
+                    selling = false
+
+                    if itemForSale and itemForSale.name then
+                        TriggerServerEvent('bcc-sellNpc:moneyFromSelling', itemForSale)
+                        devPrint("Sale completed for item: " .. itemForSale.name)
+                    else
+                        devPrint("Error: itemForSale is nil or invalid.")
+                    end
+
+                    SetPedAsNoLongerNeeded(targetPed)
+                    targetPed = nil
+                end
             else
-                saleCompleted = true
+                devPrint("Target NPC no longer exists.")
                 selling = false
-                SetEntityAsMissionEntity(oldped)
-                SetPedAsNoLongerNeeded(oldped)
-                TriggerServerEvent('bcc-sellNpc:moneyFromSelling', itemForSale)
+                saleProcessing = false
+                targetPed = nil
             end
         end
     end
 end)
 
--- Reset and Check for New Inventory on Client Side
-Citizen.CreateThread(function()
-    while true do
-        Wait(2000)
-        if not saleCompleted and not hasItems then
-            TriggerServerEvent('bcc-sellNpc:itemsForSelling')
-        end
-    end
-end)
-
+-- Cancel Selling
 RegisterNetEvent('bcc-sellNpc:cancelSelling')
 AddEventHandler('bcc-sellNpc:cancelSelling', function()
     saleCompleted = false
@@ -187,14 +242,16 @@ AddEventHandler('bcc-sellNpc:cancelSelling', function()
     devPrint("No items available to sell.")
 end)
 
+-- Sale Complete
 RegisterNetEvent('bcc-sellNpc:doneSelling')
 AddEventHandler('bcc-sellNpc:doneSelling', function()
-    saleCompleted = false
+    saleCompleted = true
     hasItems = false
     itemForSale = nil
     Core.NotifyLeft(_U('saleUnsuccessful'), _U('dontHaveItems'), "scoretimer_textures", "scoretimer_generic_cross", 3000, "red")
 end)
 
+-- Handle alert notifications
 RegisterNetEvent('bcc-sellNpc:alertsNotify')
 AddEventHandler('bcc-sellNpc:alertsNotify', function(data)
     devPrint("Received notification: " .. data.message)
@@ -202,36 +259,25 @@ AddEventHandler('bcc-sellNpc:alertsNotify', function(data)
 
     if data.x and data.y and data.z then
         if globalBlip then
-            BccUtils.Blips:RemoveBlip(globalBlip.rawblip)
+            RemoveBlip(globalBlip)
         end
+        local globalBlip = Citizen.InvokeNative(0x45f13b7e0a15c880, 1247852480, data.x, data.y, data.z, 64.0)
+        --globalBlip = BccUtils.Blips:SetBlip(data.blipLabel, data.blipSprite, data.blipScale, data.x, data.y, data.z)
+        ---globalBlip = BccUtils.Blips:SetRadius(-1282792512, 64.0, )
 
-        globalBlip = BccUtils.Blips:SetBlip(data.blipLabel, data.blipSprite, data.blipScale, data.x, data.y, data.z)
-        
+
         SetTimeout(data.blipDuration, function()
             if globalBlip then
-                BccUtils.Blips:RemoveBlip(globalBlip.rawblip)
-                globalBlip = {}
+                RemoveBlip(globalBlip)
             end
         end)
-
-        if data.useGpsRoute then
-            StartGpsMultiRoute(GetHashKey("COLOR_RED"), true, true)
-            AddPointToGpsMultiRoute(data.x, data.y, data.z)
-            SetGpsMultiRouteRender(true)
-
-            SetTimeout(data.gpsRouteDuration or data.blipDuration, function()
-                ClearGpsMultiRoute()
-                SetGpsMultiRouteRender(false)
-                devPrint("GPS route cleared.")
-            end)
-        end
     end
 end)
 
+-- Clean up blips on resource stop
 AddEventHandler('onResourceStop', function(resourceName)
     if GetCurrentResourceName() == resourceName and globalBlip then
-        BccUtils.Blips:RemoveBlip(globalBlip.rawblip)
-        globalBlip = {}
-        devPrint("Blip removed as resource is stopping.")
+        RemoveBlip(globalBlip)
+        devPrint("Blip removed on resource stop.")
     end
 end)
