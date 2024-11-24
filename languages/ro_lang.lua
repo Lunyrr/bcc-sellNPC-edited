@@ -16,5 +16,6 @@ Locales["ro_lang"] = {
     NotAllowed = "Din cauza meseriei tale nu te poti targui cu persoana",
     notEnoughOfficers = "Nu sunt suficienti ofiteri. Minim: ",
     officerAvaiable = " Disponibili: ",
-    alreadyInteractedWithNpc = "Te-ai targuit deja cu aceasta persoana"
+    alreadyInteractedWithNpc = "Te-ai targuit deja cu aceasta persoana",
+    sellLimitReached = 'Ai atins limita pe care poti vinde atunci cand nu sunt politisti la datorie!'
 }
