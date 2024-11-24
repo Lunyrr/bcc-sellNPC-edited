@@ -12,6 +12,11 @@ local currentPlayer = nil
 local globalBlip = nil
 local interactedNPCs = {} -- Store NPCs that have already been interacted with
 local currentlySelling = false -- Guard for currentlySelling event
+local sellLimit = 0
+local lawEnforcementOnline = false
+
+-- Add at the top with other state variables
+local interactionResetTime = 300000 -- 5 minutes in milliseconds
 
 -- Debug Printing Function
 local function devPrint(message)
@@ -64,6 +69,13 @@ local function attemptSellToNPC(player, ped)
         return
     end
 
+    -- Check sell limit if feature is enabled
+    if Config.SellLimitNoLawEnabled and not lawEnforcementOnline and sellLimit >= Config.MaxSellsWithoutLaw then
+        Core.NotifyObjective(_U('sellLimitReached'), 4000)
+        SetPedAsNoLongerNeeded(ped)
+        return
+    end
+
     SetEntityAsMissionEntity(ped)
     ClearPedTasksImmediately(ped)
     FreezeEntityPosition(ped, true)
@@ -74,17 +86,17 @@ local function attemptSellToNPC(player, ped)
         return
     end
 
-    selling = true -- Set selling state
+    selling = true
 
     if hasItems then
         devPrint("Starting interaction with NPC for selling.")
-        TriggerServerEvent('bcc-sellNpc:itemsForSelling') -- Request item details
+        TriggerServerEvent('bcc-sellNpc:itemsForSelling')
         TriggerServerEvent('bcc-sellNpc:reportAlert')
-        -- Wait for the server response and then proceed
+
         Citizen.SetTimeout(100, function()
             if not itemForSale or not itemForSale.name then
                 devPrint("Error: itemForSale is nil or invalid. Aborting sale.")
-                selling = false -- Reset selling state
+                selling = false
                 SetPedAsNoLongerNeeded(ped)
                 return
             end
@@ -97,12 +109,19 @@ local function attemptSellToNPC(player, ped)
                 playSellAnimation(ped)
                 Citizen.Wait(2000)
                 Core.NotifyObjective(_U('npcAcceptOffer'), 4000)
+
+                -- Update sell limit if feature is enabled and no law enforcement
+                if Config.SellLimitNoLawEnabled and not lawEnforcementOnline then
+                    sellLimit = sellLimit + 1
+                    devPrint("Local sell limit increased to: " .. sellLimit)
+                end
+
                 TriggerServerEvent('bcc-sellNpc:moneyFromSelling', itemForSale)
                 markNPCAsInteracted(ped)
                 devPrint("Sale completed for item: " .. itemForSale.name)
             end
 
-            selling = false -- Reset selling state
+            selling = false
             SetPedAsNoLongerNeeded(ped)
         end)
     else
@@ -135,6 +154,15 @@ AddEventHandler('bcc-sellNpc:updateHasItems', function(hasInventoryItems)
     hasItems = hasInventoryItems
 end)
 
+-- Add a new thread to handle reset
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(interactionResetTime)
+        interactedNPCs = {}
+        devPrint("Reset NPC interaction tracking")
+    end
+end)
+
 Citizen.CreateThread(function()
     while true do
         local sleep = 1000
@@ -148,16 +176,18 @@ Citizen.CreateThread(function()
             if success and isPedTypeAllowed(GetPedType(ped)) and not IsPedAPlayer(ped) and not IsPedDeadOrDying(ped) and #(playerLoc - GetEntityCoords(ped)) < 2.0 then
                 if ped ~= targetPed and not selling then
                     sleep = 0
-                        if IsControlPressed(0, BccUtils.Keys["B"]) then
-                            PromptGroup1:ShowGroup(_U('aproachNpc'))
+                    if IsControlPressed(0, BccUtils.Keys["B"]) then
+                        PromptGroup1:ShowGroup(_U('aproachNpc'))
+                    end
+        
+                    if InteractPrompt:HasCompleted() then
+                        if hasInteractedWithNPC(ped) then
+                            Core.NotifyObjective(_U('alreadyInteractedWithNpc'), 4000)
+                        else
+                            currentPlayer = player
+                            targetPed = ped
+                            TriggerServerEvent('bcc-sellNPC:JobCheck')
                         end
-
-                    if InteractPrompt:HasCompleted() and not hasInteractedWithNPC(ped) then
-                        currentPlayer = player
-                        targetPed = ped
-                        TriggerServerEvent('bcc-sellNPC:JobCheck')
-                    elseif hasInteractedWithNPC(ped) then
-                        Core.NotifyObjective(_U('alreadyInteractedWithNpc'), 4000)
                     end
                 end
             end
@@ -271,6 +301,26 @@ AddEventHandler('bcc-sellNpc:alertsNotify', function(data)
                 RemoveBlip(globalBlip)
             end
         end)
+    end
+end)
+
+-- Add these event handlers
+RegisterNetEvent('bcc-sellNpc:updateLawStatus')
+AddEventHandler('bcc-sellNpc:updateLawStatus', function(hasLawOnline)
+    if Config.SellLimitNoLawEnabled then
+        lawEnforcementOnline = hasLawOnline
+        if hasLawOnline then
+            sellLimit = 0 -- Reset limit when law enforcement comes online
+            devPrint("Law enforcement online - sell limits reset")
+        end
+    end
+end)
+
+RegisterNetEvent('bcc-sellNpc:updateSellLimit')
+AddEventHandler('bcc-sellNpc:updateSellLimit', function(currentLimit)
+    if Config.SellLimitNoLawEnabled then
+        sellLimit = currentLimit
+        devPrint("Sell limit updated to: " .. sellLimit)
     end
 end)
 

@@ -2,6 +2,9 @@ local Core = exports.vorp_core:GetCore()
 local BccUtils = exports['bcc-utils'].initiate()
 
 local discord = BccUtils.Discord.setup(Config.WebhookLink, Config.WebhookTitle, Config.WebhookAvatar)
+-- Add these at the top with your other state variables
+local sellLimits = {}
+local maxSellsWithoutLaw = 3 -- You can move this to Config file later
 
 -- Debug printing function
 function devPrint(message)
@@ -68,7 +71,7 @@ AddEventHandler('bcc-sellNpc:itemsForSelling', function()
     end
 end)
 
-local activeSales = {} 
+local activeSales = {}
 RegisterServerEvent('bcc-sellNpc:moneyFromSelling')
 AddEventHandler('bcc-sellNpc:moneyFromSelling', function(itemForSale)
     local _source = source
@@ -90,9 +93,9 @@ AddEventHandler('bcc-sellNpc:moneyFromSelling', function(itemForSale)
 
     devPrint("moneyFromSelling event triggered for player " .. _source)
     local user = Core.getUser(_source)
-    if not user then 
+    if not user then
         activeSales[_source] = nil -- Reset sale status
-        return 
+        return
     end
 
     local Character = user.getUsedCharacter
@@ -109,10 +112,10 @@ AddEventHandler('bcc-sellNpc:moneyFromSelling', function(itemForSale)
         local playerName = Character.firstname .. " " .. Character.lastname
         local playerId = Character.identifier
         local saleMessage = "**NPC Sale Report**\n"
-                          .. "Player: " .. playerName .. "\n"
-                          .. "Player Identifier: " .. playerId .. "\n"
-                          .. "Item Sold: " .. itemForSale.name .. "\n"
-                          .. "Amount Earned: $" .. itemForSale.price
+            .. "Player: " .. playerName .. "\n"
+            .. "Player Identifier: " .. playerId .. "\n"
+            .. "Item Sold: " .. itemForSale.name .. "\n"
+            .. "Amount Earned: $" .. itemForSale.price
 
         discord:sendMessage(saleMessage)
         Core.NotifyAvanced(
@@ -123,6 +126,23 @@ AddEventHandler('bcc-sellNpc:moneyFromSelling', function(itemForSale)
             3000,
             "green"
         )
+        -- After successful sale, update the sell limit if no law enforcement is online
+        local lawEnforcementOnline = false
+        for _, playerId in ipairs(GetPlayers()) do
+            local otherUser = Core.getUser(playerId)
+            if otherUser then
+                local otherCharacter = otherUser.getUsedCharacter
+                if otherCharacter and isJobInGroup(otherCharacter.job, Config.RequiredJobs.Jobs) then
+                    lawEnforcementOnline = true
+                    break
+                end
+            end
+        end
+
+        if not lawEnforcementOnline then
+            sellLimits[_source] = (sellLimits[_source] or 0) + 1
+            devPrint("Updated sell limit for player " .. _source .. " to " .. sellLimits[_source])
+        end
     else
         devPrint("Error: Item missing or invalid for sale.")
         TriggerClientEvent('bcc-sellNpc:doneSelling', _source)
@@ -149,6 +169,7 @@ AddEventHandler('bcc-sellNpc:checkInventory', function()
     TriggerClientEvent('bcc-sellNpc:updateHasItems', _source, hasInventoryItems)
 end)
 
+-- Modify your existing JobCheck function to include the sell limit check
 RegisterServerEvent('bcc-sellNPC:JobCheck')
 AddEventHandler('bcc-sellNPC:JobCheck', function()
     local src = source
@@ -170,42 +191,51 @@ AddEventHandler('bcc-sellNPC:JobCheck', function()
     local UserJob = Character.job
 
     -- Check if the player's job is prohibited
-    if Config.NoRobberyJobsEnable and isJobInGroup(UserJob, Config.NoRobberyJobs) then
+    if Config.NoSellJobsEnable and isJobInGroup(UserJob, Config.NoSellJobs) then
         devPrint("User has a prohibited job: " .. UserJob)
         Core.NotifyObjective(src, _U('NotAllowed'), 4000)
         TriggerClientEvent('bcc-sellNpc:jobCheckFailed', src, _U('NotAllowed'))
         return
     end
 
-    -- Check if there are enough required jobs online
-    if Config.RequiredJobEnble and Config.RequiredJobs.Amount > 0 then
-        local availableJobs = 0
+    -- Check for law enforcement online
+    local lawEnforcementOnline = false
+    local availableJobs = 0
 
-        devPrint("Required job check is enabled. Checking online jobs...")
-        
+    if Config.RequiredJobEnble and Config.RequiredJobs.Amount > 0 then
         for _, playerId in ipairs(GetPlayers()) do
             local otherUser = Core.getUser(playerId)
             if otherUser then
                 local otherCharacter = otherUser.getUsedCharacter
                 if otherCharacter and isJobInGroup(otherCharacter.job, Config.RequiredJobs.Jobs) then
                     availableJobs = availableJobs + 1
+                    lawEnforcementOnline = true
                 end
             end
         end
 
+        -- Check sell limit if no law enforcement is online
+        if not lawEnforcementOnline then
+            sellLimits[src] = sellLimits[src] or 0
+            if sellLimits[src] >= maxSellsWithoutLaw then
+                local errorMsg = _U('sellLimitReached') -- Add this to your locale file
+                devPrint("Sell limit reached for player: " .. src)
+                Core.NotifyObjective(src, errorMsg, 4000)
+                TriggerClientEvent('bcc-sellNpc:jobCheckFailed', src, errorMsg)
+                return
+            end
+        end
+
         if availableJobs < Config.RequiredJobs.Amount then
-            local errorMsg = _U('notEnoughOfficers') .. Config.RequiredJobs.Amount .. _U('officerAvaiable') .. availableJobs
-            devPrint("Not enough required jobs online. Needed: " .. Config.RequiredJobs.Amount .. ", Found: " .. availableJobs)
+            local errorMsg = _U('notEnoughOfficers') ..
+            Config.RequiredJobs.Amount .. _U('officerAvaiable') .. availableJobs
+            devPrint("Not enough required jobs online. Needed: " ..
+            Config.RequiredJobs.Amount .. ", Found: " .. availableJobs)
             Core.NotifyObjective(src, errorMsg, 4000)
             TriggerClientEvent('bcc-sellNpc:jobCheckFailed', src, errorMsg)
             return
         end
-
-        devPrint("Required job check passed. Available jobs: " .. availableJobs)
-    else
-        devPrint("Required job check is disabled or no job amount required.")
     end
-
 
     -- Job check passed
     devPrint("Job check passed for source: " .. tostring(src))
@@ -243,7 +273,8 @@ function CheckJob(src, alertType)
         if jobGrade >= jobConfig.minGrade and jobGrade <= jobConfig.maxGrade then
             return true
         else
-            devPrint("User does not meet job grade requirements for alert type: " .. tostring(alertType) .. " with job: " .. character.job .. " at grade: " .. character.jobGrade)
+            devPrint("User does not meet job grade requirements for alert type: " ..
+            tostring(alertType) .. " with job: " .. character.job .. " at grade: " .. character.jobGrade)
             return false
         end
     else
@@ -251,7 +282,6 @@ function CheckJob(src, alertType)
         return false
     end
 end
-
 
 -- Helper function to check if a value is in a table (for job checking)
 function table.includes(table, value)
@@ -273,23 +303,24 @@ function AlertJob(alertType, message, coords)
     local users = Core.getUsers()
     for _, user in pairs(users) do
         if user and CheckJob(user.source, alertType) then
-            devPrint("Sending alert to user: " .. user.source .. " at coords: " .. coords.x .. ", " .. coords.y .. ", " .. coords.z)
-            
+            devPrint("Sending alert to user: " ..
+            user.source .. " at coords: " .. coords.x .. ", " .. coords.y .. ", " .. coords.z)
+
             TriggerClientEvent('bcc-sellNpc:alertsNotify', user.source, {
                 message = message,
                 notificationType = "alert",
                 x = coords.x,
                 y = coords.y,
                 z = coords.z,
-                blipSprite = alertConfig.blipSettings.blipSprite or 1,  -- Default value for sprite
-                blipScale = alertConfig.blipSettings.blipScale or 1.0,  -- Default value for scale
-                blipColor = alertConfig.blipSettings.blipColor or 1,    -- Default color
+                blipSprite = alertConfig.blipSettings.blipSprite or 1,        -- Default value for sprite
+                blipScale = alertConfig.blipSettings.blipScale or 1.0,        -- Default value for scale
+                blipColor = alertConfig.blipSettings.blipColor or 1,          -- Default color
                 blipLabel = alertConfig.blipSettings.blipLabel or "Alert",
-                blipDuration = alertConfig.blipSettings.blipDuration or 5000,  -- Default duration
+                blipDuration = alertConfig.blipSettings.blipDuration or 5000, -- Default duration
                 gpsRouteDuration = alertConfig.blipSettings.gpsRouteDuration or 5000,
                 useGpsRoute = alertConfig.blipSettings.useGpsRoute or false
             })
-        --else
+            --else
             --devPrint("User does not match job requirements for " .. alertType .. ": " .. user.source)
         end
     end
@@ -303,7 +334,7 @@ AddEventHandler('bcc-sellNpc:reportAlert', function()
     devPrint("Illegal report by : " .. src .. " at position: X:" .. pos.x .. " Y:" .. pos.y .. " Z:" .. pos.z) -- Debugging print
 
     -- Trigger the alert for the job with details
-    AlertJob("illegalReport", _U('sellToNpcReport'), {x = pos.x, y = pos.y, z = pos.z})
+    AlertJob("illegalReport", _U('sellToNpcReport'), { x = pos.x, y = pos.y, z = pos.z })
 end)
 
 -- Version check

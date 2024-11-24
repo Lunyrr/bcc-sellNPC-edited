@@ -9,10 +9,13 @@ Locales["de_lang"] = {
     saleSuccessful = "Verkauf erfolgreich",
     youReceived = "Erhalten: $",
     sellToNpcReport = "Es ist eine illegale Aktivität im Gange!",
+    npcAlreadySold = "Already sold to this person.",
+    npcReject = "The person rejected.",
     userNotFound = "User not found.",
     characterNotFound = "Character data missing.",
     NotAllowed = "You are not allowed to perform this action.",
     notEnoughOfficers = "Not enough officers online. Required: ",
     officerAvaiable = "Available: ",
-    alreadyInteractedWithNpc = "Already tried to sell to this person"
+    alreadyInteractedWithNpc = "Already tried to sell to this person",
+    sellLimitReached = 'You have reached the maximum number of sales while no law enforcement is online!'
 }
