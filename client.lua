@@ -18,15 +18,6 @@ local lawEnforcementOnline = false
 -- Add at the top with other state variables
 local interactionResetTime = 300000 -- 5 minutes in milliseconds
 
--- Add a new thread to handle reset
-Citizen.CreateThread(function()
-    while true do
-        Citizen.Wait(interactionResetTime)
-        interactedNPCs = {}
-        devPrint("Reset NPC interaction tracking")
-    end
-end)
-
 -- Debug Printing Function
 local function devPrint(message)
     if Config.devMode then
@@ -161,6 +152,15 @@ end)
 RegisterNetEvent('bcc-sellNpc:updateHasItems')
 AddEventHandler('bcc-sellNpc:updateHasItems', function(hasInventoryItems)
     hasItems = hasInventoryItems
+end)
+
+-- Add a new thread to handle reset
+Citizen.CreateThread(function()
+    while true do
+        Citizen.Wait(interactionResetTime)
+        interactedNPCs = {}
+        devPrint("Reset NPC interaction tracking")
+    end
 end)
 
 Citizen.CreateThread(function()
