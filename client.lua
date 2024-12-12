@@ -91,7 +91,7 @@ local function attemptSellToNPC(player, ped)
     if hasItems then
         devPrint("Starting interaction with NPC for selling.")
         TriggerServerEvent('bcc-sellNpc:itemsForSelling')
-        TriggerServerEvent('bcc-sellNpc:reportAlert')
+        TriggerServerEvent('bcc-sellNpc:reportAlert', itemForSale)
 
         Citizen.SetTimeout(100, function()
             if not itemForSale or not itemForSale.name then
