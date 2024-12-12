@@ -331,10 +331,12 @@ RegisterServerEvent('bcc-sellNpc:reportAlert')
 AddEventHandler('bcc-sellNpc:reportAlert', function()
     local src = source
     local pos = GetEntityCoords(GetPlayerPed(src))
-    devPrint("Illegal report by : " .. src .. " at position: X:" .. pos.x .. " Y:" .. pos.y .. " Z:" .. pos.z) -- Debugging print
+    if itemForSale.isIllegal then
+        devPrint("Illegal report by : " .. src .. " at position: X:" .. pos.x .. " Y:" .. pos.y .. " Z:" .. pos.z) -- Debugging print
 
-    -- Trigger the alert for the job with details
-    AlertJob("illegalReport", _U('sellToNpcReport'), { x = pos.x, y = pos.y, z = pos.z })
+        -- Trigger the alert for the job with details
+        AlertJob("illegalReport", _U('sellToNpcReport'), { x = pos.x, y = pos.y, z = pos.z })
+    end
 end)
 
 -- Version check
