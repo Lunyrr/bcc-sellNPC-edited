@@ -34,10 +34,10 @@ Config.MaxSellsWithoutLaw = 5         -- Maximum sells allowed when no law enfor
 
 -- List of items to check with respective prices
 Config.itemsForSell = {
-    { name = "coal",    price = 1 },
-    { name = "water",   price = 1 },
-    { name = "alcohol", price = 1 },
-    { name = "acid",    price = 1 }
+    { name = "coal",    price = 1, isIllegal = false },
+    { name = "water",   price = 1, isIllegal = false },
+    { name = "alcohol", price = 1, isIllegal = true },
+    { name = "acid",    price = 1, isIllegal = true }
 
 }
 -- Define allowed ped types that players can interact with
