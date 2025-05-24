@@ -6,7 +6,7 @@ This script allows players to interact with NPCs in RedM to sell items.
 
 ## Added Features
 
-- **Item based transaction, you can now set it to where you can recieve items instead of money so you can give the players dirty money or things like that!
+- **Item based transaction, you can now set it to where you can recieve items instead of money so you can give the players dirty money or things like that!**
 
 ## Usage
 - **Approach an NPC**: The script will detect nearby NPCs that meet allowed ped type.
