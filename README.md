@@ -1,22 +1,12 @@
-# BCC Sell NPC
+# BCC Sell NPC Modified
 
 > NPC Selling Script for RedM
 
 This script allows players to interact with NPCs in RedM to sell items.
 
-## Features
+## Added Features
 
-- **NPC Selling Interaction**: Players can approach NPCs and attempt to sell specific items if available.
-- **Exterior-Only Sales**: Selling to NPCs is only possible if the NPC is outside of interior locations.
-- **Randomized Acceptance**: NPCs may randomly accept or reject offers.
-- **Inventory and Currency Management**: Uses inventory functions to check items and reward players upon successful sales.
-- **Blip and Notification System**: Alerts and map blips are managed for easy player guidance.
-- **Law Alert System**: Alerts are sent to law enforcement when a sale is detected, showing GPS coordinates and placing a blip on the map for a limited duration.
-- **Not inside an interior:** The NPC must be in an exterior location (not inside an interior) for selling to be allowed. 
-- **Interactive Animations**: Both the player and NPC perform animations during the selling interaction, enhancing realism and immersion.
-- **Law Enforcement Dependency**: Configurable system to limit sales when no law enforcement is online.
-- **Anti-Exploit Measures**: Prevents multiple interactions with the same NPC and includes sell limits.
-- **Job Restrictions**: Certain jobs can be restricted from selling items.
+- **Item based transaction, you can now set it to where you can recieve items instead of money so you can give the players dirty money or things like that!
 
 ## Usage
 - **Approach an NPC**: The script will detect nearby NPCs that meet allowed ped type.
@@ -52,6 +42,4 @@ In the **`config.lua`** file, you can customize the following:
 4. Configure the settings in `config.lua` to match your server's needs
 5. Restart server
 
-## Support
-- Need more help? Join the bcc discord here: https://discord.gg/VrZEEpBgZJ
-- For support, please open an issue on the GitHub repository or contact the development team.
+
