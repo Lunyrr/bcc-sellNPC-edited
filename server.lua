@@ -72,6 +72,30 @@ AddEventHandler('bcc-sellNpc:itemsForSelling', function()
 end)
 
 local activeSales = {}
+
+-- Helper function to check if player can carry all reward items
+local function canCarryAllRewards(source, rewardItems)
+    for _, reward in ipairs(rewardItems) do
+        local canCarry = exports.vorp_inventory:canCarryItem(source, reward.name, reward.amount)
+        if not canCarry then
+            devPrint("Player " .. source .. " cannot carry " .. reward.amount .. " " .. reward.name)
+            return false, reward.name, reward.amount
+        end
+    end
+    return true
+end
+
+-- Helper function to give all reward items to player
+local function giveRewardItems(source, rewardItems)
+    local rewardMessages = {}
+    for _, reward in ipairs(rewardItems) do
+        exports.vorp_inventory:addItem(source, reward.name, reward.amount, {})
+        table.insert(rewardMessages, reward.amount .. " " .. reward.name)
+        devPrint("Given " .. reward.amount .. " " .. reward.name .. " to player " .. source)
+    end
+    return rewardMessages
+end
+
 RegisterServerEvent('bcc-sellNpc:moneyFromSelling')
 AddEventHandler('bcc-sellNpc:moneyFromSelling', function(itemForSale)
     local _source = source
@@ -106,26 +130,70 @@ AddEventHandler('bcc-sellNpc:moneyFromSelling', function(itemForSale)
 
     local itemCount = exports.vorp_inventory:getItemCount(_source, nil, itemForSale.name)
     if itemCount and itemCount > 0 then
-        exports.vorp_inventory:subItem(_source, itemForSale.name, 1, {})
-        Character.addCurrency(0, itemForSale.price)
+        -- Check payment type and handle accordingly
+        if Config.PaymentType == "items" and itemForSale.rewardItems then
+            -- Check if player can carry all reward items
+            local canCarry, failedItem, failedAmount = canCarryAllRewards(_source, itemForSale.rewardItems)
+            if not canCarry then
+                Core.NotifyAvanced(
+                    _source,
+                    _U('saleUnsuccessful') .. "\nCannot carry " .. failedAmount .. " " .. failedItem,
+                    "scoretimer_textures",
+                    "scoretimer_generic_cross",
+                    4000,
+                    "red"
+                )
+                activeSales[_source] = nil
+                return
+            end
 
-        local playerName = Character.firstname .. " " .. Character.lastname
-        local playerId = Character.identifier
-        local saleMessage = "**NPC Sale Report**\n"
-            .. "Player: " .. playerName .. "\n"
-            .. "Player Identifier: " .. playerId .. "\n"
-            .. "Item Sold: " .. itemForSale.name .. "\n"
-            .. "Amount Earned: $" .. itemForSale.price
+            -- Remove the sold item
+            exports.vorp_inventory:subItem(_source, itemForSale.name, 1, {})
+            
+            -- Give reward items
+            local rewardMessages = giveRewardItems(_source, itemForSale.rewardItems)
+            
+            local playerName = Character.firstname .. " " .. Character.lastname
+            local playerId = Character.identifier
+            local saleMessage = "**NPC Sale Report (Item Rewards)**\n"
+                .. "Player: " .. playerName .. "\n"
+                .. "Player Identifier: " .. playerId .. "\n"
+                .. "Item Sold: " .. itemForSale.name .. "\n"
+                .. "Items Received: " .. table.concat(rewardMessages, ", ")
 
-        discord:sendMessage(saleMessage)
-        Core.NotifyAvanced(
-            _source,
-            _U('saleSuccessful') .. "\n" .. _U('youReceived') .. itemForSale.price,
-            "inventory_items",
-            "money_billstack",
-            3000,
-            "green"
-        )
+            discord:sendMessage(saleMessage)
+            Core.NotifyAvanced(
+                _source,
+                _U('saleSuccessful') .. "\n" .. _U('youReceived') .. table.concat(rewardMessages, ", "),
+                "inventory_items",
+                "provision_consumable_herb_common_bulrush",
+                4000,
+                "green"
+            )
+        else
+            -- Original money-based system
+            exports.vorp_inventory:subItem(_source, itemForSale.name, 1, {})
+            Character.addCurrency(0, itemForSale.price)
+
+            local playerName = Character.firstname .. " " .. Character.lastname
+            local playerId = Character.identifier
+            local saleMessage = "**NPC Sale Report**\n"
+                .. "Player: " .. playerName .. "\n"
+                .. "Player Identifier: " .. playerId .. "\n"
+                .. "Item Sold: " .. itemForSale.name .. "\n"
+                .. "Amount Earned: $" .. itemForSale.price
+
+            discord:sendMessage(saleMessage)
+            Core.NotifyAvanced(
+                _source,
+                _U('saleSuccessful') .. "\n" .. _U('youReceived') .. itemForSale.price,
+                "inventory_items",
+                "money_billstack",
+                3000,
+                "green"
+            )
+        end
+
         -- After successful sale, update the sell limit if no law enforcement is online
         local lawEnforcementOnline = false
         for _, playerId in ipairs(GetPlayers()) do
@@ -331,12 +399,10 @@ RegisterServerEvent('bcc-sellNpc:reportAlert')
 AddEventHandler('bcc-sellNpc:reportAlert', function()
     local src = source
     local pos = GetEntityCoords(GetPlayerPed(src))
-    if itemForSale.isIllegal then
-        devPrint("Illegal report by : " .. src .. " at position: X:" .. pos.x .. " Y:" .. pos.y .. " Z:" .. pos.z) -- Debugging print
+    devPrint("Illegal report by : " .. src .. " at position: X:" .. pos.x .. " Y:" .. pos.y .. " Z:" .. pos.z) -- Debugging print
 
-        -- Trigger the alert for the job with details
-        AlertJob("illegalReport", _U('sellToNpcReport'), { x = pos.x, y = pos.y, z = pos.z })
-    end
+    -- Trigger the alert for the job with details
+    AlertJob("illegalReport", _U('sellToNpcReport'), { x = pos.x, y = pos.y, z = pos.z })
 end)
 
 -- Version check

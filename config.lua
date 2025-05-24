@@ -9,8 +9,6 @@ Config.defaultlang = 'ro_lang'
 Config.Jobs = {
     lawEnforcement = {
         "police",
-        "SherifStr",
-        "SherifBlw",
     },
     medical = {
         "doctor",
@@ -32,14 +30,47 @@ Config.RequiredJobs = {
 Config.SellLimitNoLawEnabled = true   -- Toggle sell limit feature when no law enforcement is online
 Config.MaxSellsWithoutLaw = 5         -- Maximum sells allowed when no law enforcement is online
 
--- List of items to check with respective prices
-Config.itemsForSell = {
-    { name = "coal",    price = 1, isIllegal = false },
-    { name = "water",   price = 1, isIllegal = false },
-    { name = "alcohol", price = 1, isIllegal = true },
-    { name = "acid",    price = 1, isIllegal = true }
+-- Payment system: "money" or "items"
+Config.PaymentType = "items" -- Change to "money" for old money-based system
 
+-- List of items to check with respective rewards
+-- If PaymentType is "money", use price field
+-- If PaymentType is "items", use rewardItems field
+Config.itemsForSell = {
+    { 
+        name = "coal", 
+        price = 1, -- Used when PaymentType = "money"
+        rewardItems = { -- Used when PaymentType = "items"
+            { name = "bread", amount = 2 },
+            { name = "water", amount = 1 }
+        }
+    },
+    { 
+        name = "water", 
+        price = 1, -- Used when PaymentType = "money"
+        rewardItems = { -- Used when PaymentType = "items"
+            { name = "bread", amount = 1 }
+        }
+    },
+    { 
+        name = "alcohol", 
+        price = 1, -- Used when PaymentType = "money"
+        rewardItems = { -- Used when PaymentType = "items"
+            { name = "bread", amount = 3 },
+            { name = "apple", amount = 2 }
+        }
+    },
+    { 
+        name = "acid", 
+        price = 1, -- Used when PaymentType = "money"
+        rewardItems = { -- Used when PaymentType = "items"
+            { name = "bread", amount = 5 },
+            { name = "water", amount = 3 },
+            { name = "apple", amount = 1 }
+        }
+    }
 }
+
 -- Define allowed ped types that players can interact with
 Config.AllowedPedTypes = { 4, 5, 24, 6 }
 Config.alertPermissions = {
